@@ -2,19 +2,12 @@
 class AudioEmotionAnalyzer {
     constructor() {
         this.audioContext = null;
-        this.analyser = null;
-        this.dataArray = null;
-        this.bufferLength = 0;
     }
 
     // 初始化音频分析器
     initAudioAnalyzer() {
         try {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 2048;
-            this.bufferLength = this.analyser.frequencyBinCount;
-            this.dataArray = new Uint8Array(this.bufferLength);
             return true;
         } catch (error) {
             console.error('音频分析器初始化失败:', error);
@@ -30,22 +23,15 @@ class AudioEmotionAnalyzer {
                     throw new Error('浏览器不支持Web Audio API');
                 }
 
-                const arrayBuffer = await audioFile.arrayBuffer();
-                const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                // 读取文件为ArrayBuffer
+                const arrayBuffer = await this.readFileAsArrayBuffer(audioFile);
                 
-                // 创建音频源
-                const source = this.audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(this.analyser);
-                this.analyser.connect(this.audioContext.destination);
+                // 解码音频数据
+                const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
                 
                 // 分析音频特征
                 const features = this.extractAudioFeatures(audioBuffer);
                 const emotionResult = this.calculateEmotion(features, audioBuffer.duration);
-                
-                // 清理资源
-                source.disconnect();
-                this.audioContext.close();
                 
                 resolve(emotionResult);
             } catch (error) {
@@ -54,37 +40,54 @@ class AudioEmotionAnalyzer {
         });
     }
 
+    // 读取文件为ArrayBuffer
+    readFileAsArrayBuffer(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
     // 提取音频特征
     extractAudioFeatures(audioBuffer) {
-        const features = {
-            duration: audioBuffer.duration,
-            sampleRate: audioBuffer.sampleRate,
-            channels: audioBuffer.numberOfChannels
-        };
-
-        // 获取音频数据（使用左声道）
+        // 限制分析长度为30秒
+        const maxDuration = 30;
+        const duration = Math.min(audioBuffer.duration, maxDuration);
+        const sampleRate = audioBuffer.sampleRate;
+        const totalSamples = Math.floor(duration * sampleRate);
+        
+        // 获取左声道数据
         const channelData = audioBuffer.getChannelData(0);
-        const length = channelData.length;
+        const analysisData = channelData.slice(0, totalSamples);
+
+        const features = {
+            duration: duration,
+            sampleRate: sampleRate
+        };
 
         // 1. 音量特征 (RMS)
         let sum = 0;
-        for (let i = 0; i < length; i++) {
-            sum += channelData[i] * channelData[i];
+        for (let i = 0; i < analysisData.length; i++) {
+            sum += analysisData[i] * analysisData[i];
         }
-        features.rms = Math.sqrt(sum / length);
-        features.rmsVariance = this.calculateVariance(channelData, features.rms);
+        features.rms = Math.sqrt(sum / analysisData.length);
+        
+        // 计算音量变化
+        features.rmsVariance = this.calculateVariance(analysisData, features.rms);
 
         // 2. 过零率 (Zero Crossing Rate)
         let zeroCrossings = 0;
-        for (let i = 1; i < length; i++) {
-            if (channelData[i-1] * channelData[i] < 0) {
+        for (let i = 1; i < analysisData.length; i++) {
+            if (analysisData[i-1] * analysisData[i] < 0) {
                 zeroCrossings++;
             }
         }
-        features.zcr = zeroCrossings / length;
+        features.zcr = zeroCrossings / analysisData.length;
 
         // 3. 频谱特征
-        const spectralFeatures = this.calculateSpectralFeatures(channelData);
+        const spectralFeatures = this.calculateSpectralFeatures(analysisData);
         Object.assign(features, spectralFeatures);
 
         return features;
@@ -100,45 +103,40 @@ class AudioEmotionAnalyzer {
     }
 
     // 计算频谱特征
-    calculateSpectralFeatures(channelData) {
+    calculateSpectralFeatures(data) {
         const features = {};
         
-        // 简单的频谱分析（实际应用中可以使用更复杂的FFT）
-        const frameSize = 1024;
-        const spectralCentroid = this.calculateSpectralCentroid(channelData, frameSize);
-        features.spectralCentroid = spectralCentroid;
-        
-        // 能量分布
+        // 简单的频谱分析
         let lowFreqEnergy = 0;
         let midFreqEnergy = 0;
         let highFreqEnergy = 0;
         
-        const third = Math.floor(channelData.length / 3);
-        for (let i = 0; i < channelData.length; i++) {
-            const energy = Math.abs(channelData[i]);
+        const third = Math.floor(data.length / 3);
+        for (let i = 0; i < data.length; i++) {
+            const energy = Math.abs(data[i]);
             if (i < third) lowFreqEnergy += energy;
             else if (i < 2 * third) midFreqEnergy += energy;
             else highFreqEnergy += energy;
         }
         
-        features.lowFreqRatio = lowFreqEnergy / (lowFreqEnergy + midFreqEnergy + highFreqEnergy);
-        features.highFreqRatio = highFreqEnergy / (lowFreqEnergy + midFreqEnergy + highFreqEnergy);
+        const totalEnergy = lowFreqEnergy + midFreqEnergy + highFreqEnergy;
+        features.lowFreqRatio = lowFreqEnergy / totalEnergy;
+        features.highFreqRatio = highFreqEnergy / totalEnergy;
         
-        return features;
-    }
-
-    // 计算频谱重心（简化版）
-    calculateSpectralCentroid(data, frameSize) {
+        // 频谱重心（简化计算）
         let weightedSum = 0;
         let sum = 0;
+        const frameSize = Math.min(data.length, 1024);
         
-        for (let i = 0; i < Math.min(data.length, frameSize); i++) {
+        for (let i = 0; i < frameSize; i++) {
             const magnitude = Math.abs(data[i]);
             weightedSum += i * magnitude;
             sum += magnitude;
         }
         
-        return sum > 0 ? weightedSum / sum : 0;
+        features.spectralCentroid = sum > 0 ? weightedSum / sum : 0;
+        
+        return features;
     }
 
     // 计算情绪分数
@@ -184,7 +182,9 @@ class AudioEmotionAnalyzer {
 class SpeechEmotionApp {
     constructor() {
         this.analyzer = new AudioEmotionAnalyzer();
-        this.currentResult = null;
+        this.currentFile = null;
+        this.emotionChart = null;
+        this.featureChart = null;
         this.init();
     }
 
@@ -194,17 +194,17 @@ class SpeechEmotionApp {
     }
 
     bindEvents() {
-        // 文件选择
+        // 文件选择按钮点击事件
         document.getElementById('selectFileBtn').addEventListener('click', () => {
             document.getElementById('audioFile').click();
         });
 
-        // 文件变化
+        // 文件输入变化事件
         document.getElementById('audioFile').addEventListener('change', (e) => {
             this.handleFileSelect(e);
         });
 
-        // 移除文件
+        // 移除文件按钮
         document.getElementById('removeAudioBtn').addEventListener('click', () => {
             this.resetUpload();
         });
@@ -228,14 +228,14 @@ class SpeechEmotionApp {
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
-            if (e.dataTransfer.files.length) {
+            if (e.dataTransfer.files.length > 0) {
                 this.handleFile(e.dataTransfer.files[0]);
             }
         });
     }
 
     handleFileSelect(e) {
-        if (e.target.files.length) {
+        if (e.target.files.length > 0) {
             this.handleFile(e.target.files[0]);
         }
     }
@@ -243,15 +243,18 @@ class SpeechEmotionApp {
     handleFile(file) {
         // 验证文件类型
         if (!file.type.startsWith('audio/')) {
-            alert('请选择音频文件（MP3、WAV、M4A等格式）');
+            this.showError('请选择音频文件（MP3、WAV、M4A等格式）');
             return;
         }
 
         // 验证文件大小（最大50MB）
         if (file.size > 50 * 1024 * 1024) {
-            alert('文件大小不能超过50MB');
+            this.showError('文件大小不能超过50MB');
             return;
         }
+
+        // 保存文件引用
+        this.currentFile = file;
 
         // 显示文件信息
         document.getElementById('fileInfo').textContent = 
@@ -269,6 +272,11 @@ class SpeechEmotionApp {
         document.getElementById('analyzeBtn').disabled = false;
     }
 
+    showError(message) {
+        alert(message);
+        this.resetUpload();
+    }
+
     resetUpload() {
         document.getElementById('audioFile').value = '';
         document.getElementById('audioPlayer').src = '';
@@ -277,33 +285,36 @@ class SpeechEmotionApp {
         document.getElementById('fileInfo').textContent = '';
         document.getElementById('analyzeBtn').disabled = true;
         document.getElementById('resultsSection').style.display = 'none';
+        this.currentFile = null;
         
         // 清理图表
-        if (this.emotionChart) this.emotionChart.destroy();
-        if (this.featureChart) this.featureChart.destroy();
+        if (this.emotionChart) {
+            this.emotionChart.destroy();
+            this.emotionChart = null;
+        }
+        if (this.featureChart) {
+            this.featureChart.destroy();
+            this.featureChart = null;
+        }
     }
 
     async analyzeAudio() {
-        const fileInput = document.getElementById('audioFile');
+        if (!this.currentFile) return;
+
         const analyzeBtn = document.getElementById('analyzeBtn');
         const loading = document.getElementById('loading');
         const resultsSection = document.getElementById('resultsSection');
-
-        if (!fileInput.files.length) return;
 
         analyzeBtn.disabled = true;
         loading.style.display = 'block';
         resultsSection.style.display = 'none';
 
         try {
-            const file = fileInput.files[0];
-            this.currentResult = await this.analyzer.analyzeAudioFile(file);
-            this.displayResults(this.currentResult);
+            const result = await this.analyzer.analyzeAudioFile(this.currentFile);
+            this.displayResults(result);
         } catch (error) {
             console.error('分析失败:', error);
-            document.getElementById('resultsContent').innerHTML = 
-                `<p style="color: red; text-align: center;">分析失败: ${error.message}</p>`;
-            resultsSection.style.display = 'block';
+            this.showError('分析失败: ' + error.message);
         } finally {
             loading.style.display = 'none';
             analyzeBtn.disabled = false;
@@ -339,7 +350,9 @@ class SpeechEmotionApp {
     createEmotionChart(emotions) {
         const ctx = document.getElementById('emotionChart').getContext('2d');
         
-        if (this.emotionChart) this.emotionChart.destroy();
+        if (this.emotionChart) {
+            this.emotionChart.destroy();
+        }
         
         this.emotionChart = new Chart(ctx, {
             type: 'doughnut',
@@ -371,39 +384,41 @@ class SpeechEmotionApp {
     createFeatureChart(features) {
         const ctx = document.getElementById('featureChart').getContext('2d');
         
-        if (this.featureChart) this.featureChart.destroy();
+        if (this.featureChart) {
+            this.featureChart.destroy();
+        }
         
         this.featureChart = new Chart(ctx, {
-            type: 'radar',
+            type: 'bar',
             data: {
-                labels: ['音量强度', '音量变化', '过零率', '高频成分', '低频成分'],
+                labels: ['音量强度', '音量变化', '过零率'],
                 datasets: [{
-                    label: '音频特征',
+                    label: '音频特征值',
                     data: [
                         features.volume / 10, 
                         features.variability / 5, 
-                        features.zeroCrossing,
-                        70, // 模拟高频数据
-                        30  // 模拟低频数据
+                        features.zeroCrossing
                     ],
-                    backgroundColor: 'rgba(102, 126, 234, 0.2)',
-                    borderColor: '#667eea',
-                    pointBackgroundColor: '#667eea',
-                    pointBorderColor: '#fff',
-                    pointHoverBackgroundColor: '#fff',
-                    pointHoverBorderColor: '#667eea'
+                    backgroundColor: [
+                        'rgba(102, 126, 234, 0.7)',
+                        'rgba(237, 137, 54, 0.7)',
+                        'rgba(102, 204, 153, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgb(102, 126, 234)',
+                        'rgb(237, 137, 54)',
+                        'rgb(102, 204, 153)'
+                    ],
+                    borderWidth: 1
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    r: {
-                        angleLines: {
-                            display: true
-                        },
-                        suggestedMin: 0,
-                        suggestedMax: 100
+                    y: {
+                        beginAtZero: true,
+                        max: 100
                     }
                 }
             }
@@ -442,7 +457,7 @@ class SpeechEmotionApp {
     }
 
     generateReport(result) {
-        const { emotions, conflictRisk, duration, features } = result;
+        const { emotions, conflictRisk, duration } = result;
         const reportContent = document.getElementById('reportContent');
         
         let reportHTML = `
@@ -452,4 +467,101 @@ class SpeechEmotionApp {
                 <ul>
                     <li><strong>平静 ${emotions.calm}%</strong>: 语调平稳，音量变化小</li>
                     <li><strong>紧张 ${emotions.tense}%</strong>: 语速较快，音调较高</li>
-                    <li><strong>愤怒 ${emotions.angry}%</strong>: 音量突变，语调尖锐
+                    <li><strong>愤怒 ${emotions.angry}%</strong>: 音量突变，语调尖锐</li>
+                    <li><strong>兴奋 ${emotions.excited}%</strong>: 能量集中，节奏活跃</li>
+                </ul>
+            </div>
+            
+            <div class="report-item">
+                <h4>冲突风险评估</h4>
+                <p>当前冲突风险指数为 <strong>${conflictRisk}%</strong>，属于${this.getRiskLevel(conflictRisk)}级别。</p>
+                <p>${this.getRiskAdvice(conflictRisk)}</p>
+            </div>
+            
+            <div class="report-item">
+                <h4>建议措施</h4>
+                <p>${this.getActionRecommendations(emotions, conflictRisk)}</p>
+            </div>
+        `;
+        
+        reportContent.innerHTML = reportHTML;
+    }
+
+    getDominantEmotion(emotions) {
+        let maxValue = 0;
+        let dominantEmotion = '';
+        
+        for (const [emotion, value] of Object.entries(emotions)) {
+            if (value > maxValue) {
+                maxValue = value;
+                dominantEmotion = emotion;
+            }
+        }
+        
+        const emotionNames = {
+            calm: '平静',
+            tense: '紧张', 
+            angry: '愤怒',
+            excited: '兴奋'
+        };
+        
+        return emotionNames[dominantEmotion] || '平静';
+    }
+
+    getRiskLevel(risk) {
+        if (risk < 30) return '低风险';
+        if (risk < 60) return '中等风险';
+        return '高风险';
+    }
+
+    getRiskAdvice(risk) {
+        if (risk < 30) {
+            return '当前对话氛围良好，继续保持积极沟通即可。';
+        } else if (risk < 60) {
+            return '建议关注对话中的紧张情绪，适时引导话题走向更积极的方向。';
+        } else {
+            return '检测到较高冲突风险，建议暂停当前话题，先处理情绪再继续沟通。';
+        }
+    }
+
+    getActionRecommendations(emotions, risk) {
+        let recommendations = [];
+        
+        if (emotions.angry > 20) {
+            recommendations.push('避免直接对抗，使用"我"语句表达感受');
+        }
+        
+        if (emotions.tense > 30) {
+            recommendations.push('尝试降低语速，使用更平静的语调');
+        }
+        
+        if (risk > 50) {
+            recommendations.push('考虑暂停讨论，稍后继续');
+        }
+        
+        if (emotions.calm > 50) {
+            recommendations.push('当前沟通方式有效，可继续保持');
+        }
+        
+        if (recommendations.length === 0) {
+            recommendations.push('当前沟通状态良好，无需特别调整');
+        }
+        
+        return recommendations.map(rec => `• ${rec}`).join('<br>');
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+}
+
+// 初始化应用
+document.addEventListener('DOMContentLoaded', () => {
+    new SpeechEmotionApp();
+});
