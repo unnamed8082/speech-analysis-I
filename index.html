@@ -22,12 +22,12 @@
                     <div class="upload-content">
                         <div class="upload-icon">🎵</div>
                         <p>点击选择文件或拖放音频文件到这里</p>
-                        <input type="file" id="audioFile" accept="audio/*" hidden>
+                        <input type="file" id="audioFile" accept="audio/*" style="display: none;">
                         <button class="btn-primary" id="selectFileBtn">选择文件</button>
                     </div>
                 </div>
                 <div class="audio-preview" id="audioPreview" style="display: none;">
-                    <audio controls id="audioPlayer"></audio>
+                    <audio controls id="audioPlayer" style="width: 100%;"></audio>
                     <button class="btn-secondary" id="removeAudioBtn">移除文件</button>
                 </div>
                 <div class="file-info" id="fileInfo"></div>
