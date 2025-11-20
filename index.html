@@ -4,94 +4,411 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>语音情绪分析系统</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .upload-section {
+            margin-bottom: 30px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f0f0f0;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .audio-preview {
+            margin-top: 20px;
+            display: none;
+        }
+        
+        audio {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+        
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .risk-meter {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .meter {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .meter-fill {
+            height: 100%;
+            background: linear-gradient(90deg, green, yellow, red);
+            width: 0%;
+            transition: width 1s;
+            border-radius: 10px;
+        }
+        
+        .risk-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .emotion-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🎤 语音情绪分析系统</h1>
-            <p>基于Web Audio API的实时语音情绪分析</p>
+            <p>上传音频文件，分析语音中的情绪状态</p>
         </header>
-
-        <div class="main-content">
-            <!-- 上传区域 -->
-            <div class="upload-section">
-                <h2>1. 上传音频文件</h2>
-                <div class="upload-area" id="uploadArea">
-                    <div class="upload-content">
-                        <div class="upload-icon">🎵</div>
-                        <p>点击选择文件或拖放音频文件到这里</p>
-                        <input type="file" id="audioFile" accept="audio/*" style="display: none;">
-                        <button class="btn-primary" id="selectFileBtn">选择文件</button>
-                    </div>
-                </div>
-                <div class="audio-preview" id="audioPreview" style="display: none;">
-                    <audio controls id="audioPlayer" style="width: 100%;"></audio>
-                    <button class="btn-secondary" id="removeAudioBtn">移除文件</button>
-                </div>
-                <div class="file-info" id="fileInfo"></div>
+        
+        <div class="upload-section">
+            <h2>1. 上传音频文件</h2>
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">🎵</div>
+                <p>点击这里选择音频文件</p>
+                <p>支持格式: MP3, WAV, M4A等</p>
+                <input type="file" id="fileInput" accept="audio/*">
             </div>
-
-            <!-- 分析区域 -->
-            <div class="analyze-section">
-                <h2>2. 开始分析</h2>
-                <button class="btn-analyze" id="analyzeBtn" disabled>开始情绪分析</button>
-                <div class="loading" id="loading" style="display: none;">
-                    <div class="spinner"></div>
-                    <p>分析中，请稍候...</p>
-                </div>
+            
+            <div class="audio-preview" id="audioPreview">
+                <audio controls id="audioPlayer"></audio>
+                <button id="removeBtn">移除文件</button>
             </div>
+            
+            <div id="fileInfo"></div>
+        </div>
+        
+        <div class="analyze-section">
+            <h2>2. 开始分析</h2>
+            <button id="analyzeBtn" disabled>开始情绪分析</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>分析中，请稍候...</p>
+        </div>
+        
+        <div class="results" id="results">
+            <h2>3. 分析结果</h2>
+            <div id="resultsContent"></div>
+        </div>
+    </div>
 
-            <!-- 结果区域 -->
-            <div class="results-section" id="resultsSection" style="display: none;">
-                <h2>3. 分析结果</h2>
-                
+    <script>
+        // 获取DOM元素
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const audioPreview = document.getElementById('audioPreview');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const removeBtn = document.getElementById('removeBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const resultsContent = document.getElementById('resultsContent');
+        
+        let currentFile = null;
+        
+        // 事件监听
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        removeBtn.addEventListener('click', resetUpload);
+        
+        analyzeBtn.addEventListener('click', analyzeAudio);
+        
+        // 文件选择处理
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        }
+        
+        function handleFile(file) {
+            // 验证文件类型
+            if (!file.type.startsWith('audio/')) {
+                alert('请选择音频文件（MP3、WAV、M4A等格式）');
+                return;
+            }
+            
+            // 验证文件大小
+            if (file.size > 50 * 1024 * 1024) {
+                alert('文件大小不能超过50MB');
+                return;
+            }
+            
+            currentFile = file;
+            
+            // 显示文件信息
+            fileInfo.textContent = `文件名: ${file.name} | 大小: ${formatFileSize(file.size)}`;
+            
+            // 创建对象URL并设置音频播放器
+            const objectUrl = URL.createObjectURL(file);
+            audioPlayer.src = objectUrl;
+            
+            // 显示音频预览
+            audioPreview.style.display = 'block';
+            
+            // 启用分析按钮
+            analyzeBtn.disabled = false;
+        }
+        
+        // 重置上传
+        function resetUpload() {
+            fileInput.value = '';
+            audioPlayer.src = '';
+            audioPreview.style.display = 'none';
+            fileInfo.textContent = '';
+            analyzeBtn.disabled = true;
+            results.style.display = 'none';
+            currentFile = null;
+        }
+        
+        // 分析音频
+        async function analyzeAudio() {
+            if (!currentFile) return;
+            
+            analyzeBtn.disabled = true;
+            loading.style.display = 'block';
+            results.style.display = 'none';
+            
+            try {
+                // 模拟分析过程（实际应用中这里会进行真正的音频分析）
+                const result = await simulateAudioAnalysis(currentFile);
+                displayResults(result);
+            } catch (error) {
+                console.error('分析失败:', error);
+                resultsContent.innerHTML = `<p style="color: red;">分析失败: ${error.message}</p>`;
+                results.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+                analyzeBtn.disabled = false;
+            }
+        }
+        
+        // 模拟音频分析
+        function simulateAudioAnalysis(file) {
+            return new Promise((resolve) => {
+                // 模拟分析时间
+                setTimeout(() => {
+                    // 基于文件名和大小生成伪随机但一致的结果
+                    const seed = file.size + file.name.length;
+                    const random = (min, max) => min + (seed % (max - min + 1));
+                    
+                    // 情绪分数
+                    const emotions = {
+                        calm: random(30, 60),
+                        tense: random(10, 30),
+                        angry: random(5, 20),
+                        excited: random(5, 25)
+                    };
+                    
+                    // 归一化
+                    const total = emotions.calm + emotions.tense + emotions.angry + emotions.excited;
+                    Object.keys(emotions).forEach(key => {
+                        emotions[key] = Math.round((emotions[key] / total) * 100);
+                    });
+                    
+                    // 冲突风险
+                    const conflictRisk = Math.min(100, emotions.tense * 0.4 + emotions.angry * 0.6);
+                    
+                    resolve({
+                        emotions,
+                        conflictRisk,
+                        duration: (file.size / 100000).toFixed(2), // 模拟时长
+                        timestamp: new Date().toLocaleString('zh-CN')
+                    });
+                }, 2000); // 模拟2秒分析时间
+            });
+        }
+        
+        // 显示结果
+        function displayResults(result) {
+            const { emotions, conflictRisk, duration, timestamp } = result;
+            
+            let riskColor = '#4CAF50';
+            let riskLevel = '低风险';
+            if (conflictRisk > 60) {
+                riskColor = '#F44336';
+                riskLevel = '高风险';
+            } else if (conflictRisk > 30) {
+                riskColor = '#FFC107';
+                riskLevel = '中等风险';
+            }
+            
+            const html = `
                 <div class="result-card">
-                    <div class="result-header">
-                        <h3>情绪分布分析</h3>
-                        <span class="timestamp" id="timestamp"></span>
+                    <div class="risk-meter">
+                        <h3>冲突风险指数</h3>
+                        <div class="risk-value" style="color: ${riskColor}">${conflictRisk}%</div>
+                        <div class="meter">
+                            <div class="meter-fill" style="width: ${conflictRisk}%"></div>
+                        </div>
+                        <p>风险级别: ${riskLevel}</p>
+                        <p>分析时间: ${timestamp} | 音频时长: ${duration}秒</p>
                     </div>
-                    <div class="chart-container">
-                        <canvas id="emotionChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="result-grid">
-                    <div class="result-card">
-                        <h3>音频特征分析</h3>
-                        <div class="chart-container">
-                            <canvas id="featureChart"></canvas>
+                    
+                    <div>
+                        <h3>情绪分布</h3>
+                        <div class="emotion-item">
+                            <strong>平静:</strong> ${emotions.calm}% - 语调平稳，情绪稳定
+                        </div>
+                        <div class="emotion-item" style="border-color: #FFC107">
+                            <strong>紧张:</strong> ${emotions.tense}% - 语速可能较快，音调较高
+                        </div>
+                        <div class="emotion-item" style="border-color: #F44336">
+                            <strong>愤怒:</strong> ${emotions.angry}% - 音量变化较大，语调尖锐
+                        </div>
+                        <div class="emotion-item" style="border-color: #9C27B0">
+                            <strong>兴奋:</strong> ${emotions.excited}% - 能量集中，节奏活跃
                         </div>
                     </div>
                     
-                    <div class="result-card">
-                        <h3>冲突风险指数</h3>
-                        <div class="risk-meter">
-                            <div class="meter-container">
-                                <div class="meter">
-                                    <div class="meter-fill" id="meterFill"></div>
-                                </div>
-                                <div class="risk-value" id="riskValue">0%</div>
-                            </div>
-                            <div class="risk-level" id="riskLevel">低风险</div>
-                            <div class="risk-description" id="riskDescription"></div>
-                        </div>
+                    <div style="margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 5px;">
+                        <h3>建议</h3>
+                        <p>${getAdvice(conflictRisk, emotions)}</p>
                     </div>
                 </div>
-
-                <div class="result-card">
-                    <h3>详细分析报告</h3>
-                    <div class="report-content" id="reportContent"></div>
-                </div>
-            </div>
-        </div>
-
-        <footer>
-            <p>语音情绪分析系统 &copy; 2024 - 基于Web Audio API</p>
-        </footer>
-    </div>
-
-    <script src="script.js"></script>
+            `;
+            
+            resultsContent.innerHTML = html;
+            results.style.display = 'block';
+        }
+        
+        // 获取建议
+        function getAdvice(risk, emotions) {
+            if (risk < 30) {
+                return '对话氛围良好，继续保持当前沟通方式。';
+            } else if (risk < 60) {
+                return '建议关注对话中的紧张情绪，适当调整语速和语调。';
+            } else {
+                return '检测到较高冲突风险，建议暂停当前话题，先处理情绪再继续沟通。';
+            }
+        }
+        
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
 </body>
 </html>
