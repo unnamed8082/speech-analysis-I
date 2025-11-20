@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音情绪分析系统</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎤 语音情绪分析系统</h1>
+            <p>基于Web Audio API的实时语音情绪分析</p>
+        </header>
+
+        <div class="main-content">
+            <!-- 上传区域 -->
+            <div class="upload-section">
+                <h2>1. 上传音频文件</h2>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <div class="upload-icon">🎵</div>
+                        <p>点击选择文件或拖放音频文件到这里</p>
+                        <input type="file" id="audioFile" accept="audio/*" hidden>
+                        <button class="btn-primary" id="selectFileBtn">选择文件</button>
+                    </div>
+                </div>
+                <div class="audio-preview" id="audioPreview" style="display: none;">
+                    <audio controls id="audioPlayer"></audio>
+                    <button class="btn-secondary" id="removeAudioBtn">移除文件</button>
+                </div>
+                <div class="file-info" id="fileInfo"></div>
+            </div>
+
+            <!-- 分析区域 -->
+            <div class="analyze-section">
+                <h2>2. 开始分析</h2>
+                <button class="btn-analyze" id="analyzeBtn" disabled>开始情绪分析</button>
+                <div class="loading" id="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>分析中，请稍候...</p>
+                </div>
+            </div>
+
+            <!-- 结果区域 -->
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <h2>3. 分析结果</h2>
+                
+                <div class="result-card">
+                    <div class="result-header">
+                        <h3>情绪分布分析</h3>
+                        <span class="timestamp" id="timestamp"></span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="emotionChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="result-grid">
+                    <div class="result-card">
+                        <h3>音频特征分析</h3>
+                        <div class="chart-container">
+                            <canvas id="featureChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="result-card">
+                        <h3>冲突风险指数</h3>
+                        <div class="risk-meter">
+                            <div class="meter-container">
+                                <div class="meter">
+                                    <div class="meter-fill" id="meterFill"></div>
+                                </div>
+                                <div class="risk-value" id="riskValue">0%</div>
+                            </div>
+                            <div class="risk-level" id="riskLevel">低风险</div>
+                            <div class="risk-description" id="riskDescription"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-card">
+                    <h3>详细分析报告</h3>
+                    <div class="report-content" id="reportContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>语音情绪分析系统 &copy; 2024 - 基于Web Audio API</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
